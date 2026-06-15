@@ -1218,3 +1218,266 @@ details[open] > .tx-details-toggle::before { transform: rotate(90deg); }
   font-weight: 600;
   color:       var(--color-muted);
 }
+
+/* ─── News (Web Monetization demo) ───────────────────────── */
+.news-page { display: flex; flex-direction: column; gap: 1.25rem; }
+
+/* Banner explaining the Web Monetization framing */
+.wm-banner {
+  flex-direction: row;
+  align-items:    center;
+  gap:            1.25rem;
+  background:     linear-gradient(135deg, var(--color-primary-tint), transparent);
+}
+.wm-banner-mark {
+  font-size:   2.5rem;
+  line-height: 1;
+  color:       var(--color-primary);
+  flex-shrink: 0;
+}
+.wm-banner-text  { display: flex; flex-direction: column; gap: 0.35rem; }
+.wm-banner-title { font-size: 1.375rem; font-weight: 700; }
+.wm-banner-sub   { color: var(--color-muted); font-size: 0.9375rem; line-height: 1.5; }
+.wm-stream-sub code,
+.receipt-value {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size:   0.85em;
+  background:  var(--color-bg);
+  padding:     0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+/* Post grid + cards */
+.news-grid {
+  display:               grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap:                   1rem;
+}
+.news-card {
+  background:      var(--color-surface);
+  border:         1px solid var(--color-primary-border);
+  border-radius:  var(--radius);
+  padding:        1.25rem;
+  display:        flex;
+  flex-direction: column;
+  gap:            0.75rem;
+  text-decoration: none;
+  color:          var(--color-text);
+  transition:     transform 0.15s ease, border-color 0.15s ease;
+}
+.news-card:hover {
+  transform:    translateY(-3px);
+  border-color: var(--color-primary);
+}
+.news-card-top {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  gap:             0.5rem;
+}
+.category-chip {
+  font-size:      0.7rem;
+  font-weight:    600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color:          var(--color-primary);
+  background:      var(--color-primary-tint);
+  padding:        0.2rem 0.55rem;
+  border-radius:  999px;
+}
+.price-tag {
+  font-size:     0.8125rem;
+  font-weight:   700;
+  color:         var(--color-primary);
+  background:     var(--color-primary-tint);
+  padding:       0.25rem 0.6rem;
+  border-radius: 999px;
+}
+.news-unlocked-badge { font-size: 0.75rem; }
+.live-chip {
+  display:        inline-flex;
+  align-items:    center;
+  gap:            0.3rem;
+  font-size:      0.75rem;
+  font-weight:    700;
+  color:          var(--color-success);
+  background:      color-mix(in srgb, var(--color-success) 15%, transparent);
+  padding:        0.25rem 0.6rem;
+  border-radius:  999px;
+  width:          fit-content;
+}
+.news-card-live { border-color: color-mix(in srgb, var(--color-success) 40%, var(--color-primary-border)); }
+.news-card-title   { font-size: 1.0625rem; font-weight: 700; line-height: 1.3; }
+.news-card-excerpt {
+  font-size:   0.875rem;
+  color:       var(--color-muted);
+  line-height: 1.5;
+  display:            -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow:           hidden;
+}
+.news-card-author {
+  display:     flex;
+  align-items: center;
+  gap:         0.5rem;
+  margin-top:  auto;
+  padding-top: 0.5rem;
+}
+.news-author-avatar {
+  width:         28px;
+  height:        28px;
+  border-radius: 50%;
+  object-fit:    cover;
+  flex-shrink:   0;
+}
+.news-author-avatar-placeholder {
+  width:           28px;
+  height:          28px;
+  border-radius:   50%;
+  background:      var(--color-primary);
+  color:           #fff;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  font-size:       0.7rem;
+  font-weight:     700;
+  flex-shrink:     0;
+}
+.news-author-name { font-size: 0.8125rem; font-weight: 600; }
+.news-card-cta {
+  margin-left: auto;
+  font-size:   0.8125rem;
+  font-weight: 600;
+  color:       var(--color-primary);
+}
+
+/* Article view */
+.news-article { gap: 1rem; }
+.news-back {
+  font-size:       0.875rem;
+  color:           var(--color-muted);
+  text-decoration: none;
+  width:           fit-content;
+}
+.news-back:hover { color: var(--color-primary); }
+.article-head { display: flex; flex-direction: column; gap: 0.6rem; }
+.article-title { font-size: 1.6rem; font-weight: 700; line-height: 1.25; }
+.article-byline { display: flex; align-items: center; gap: 0.5rem; }
+.article-excerpt {
+  font-size:   1.05rem;
+  line-height: 1.6;
+  color:       var(--color-text);
+  font-weight: 500;
+}
+.article-body { display: flex; flex-direction: column; gap: 1rem; }
+.article-body p { line-height: 1.7; color: var(--color-text); }
+
+/* Paywall */
+.paywall {
+  display:         flex;
+  flex-direction:  column;
+  align-items:     center;
+  text-align:      center;
+  gap:             0.75rem;
+  padding:         1.5rem 1rem;
+  background:      var(--color-bg);
+  border:         1px dashed var(--color-primary-border);
+  border-radius:  var(--radius);
+}
+.paywall-lock  { font-size: 2rem; }
+.paywall-title { font-size: 1.125rem; font-weight: 700; }
+
+/* Web Monetization streaming meter */
+.wm-stream {
+  width:          100%;
+  max-width:      44ch;
+  display:        flex;
+  flex-direction: column;
+  gap:            0.6rem;
+  padding:        1rem;
+  background:      var(--color-surface);
+  border:         1px solid var(--color-primary-border);
+  border-radius:  var(--radius);
+}
+.wm-stream-head {
+  display:     flex;
+  align-items: center;
+  gap:         0.4rem;
+  font-weight: 700;
+  font-size:   0.9rem;
+  color:       var(--color-primary);
+}
+.wm-stream-sub { color: var(--color-muted); font-size: 0.85rem; line-height: 1.5; text-align: left; }
+.wm-progress {
+  width:         100%;
+  height:        8px;
+  background:     var(--color-bg);
+  border-radius: 999px;
+  overflow:      hidden;
+}
+.wm-progress-bar {
+  width:      0%;
+  height:     100%;
+  background: var(--color-primary);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.wm-stream-stats {
+  display:         flex;
+  justify-content: space-between;
+  font-size:       0.85rem;
+}
+.wm-waiting { font-size: 0.8rem; text-align: left; }
+.wm-unsupported {
+  font-size:   0.85rem;
+  line-height: 1.5;
+  color:       var(--color-muted);
+  text-align:  left;
+  max-width:   46ch;
+}
+.wm-unsupported a { color: var(--color-primary); }
+.paywall-fallback {
+  display:     flex;
+  align-items: center;
+  gap:         0.5rem;
+  flex-wrap:   wrap;
+  justify-content: center;
+  margin-top:  0.25rem;
+}
+
+/* MonetizationEvent-style receipt */
+.monetization-receipt {
+  margin-top:     1.25rem;
+  background:      var(--color-bg);
+  border:         1px solid var(--color-primary-border);
+  border-radius:  var(--radius);
+  padding:        1rem;
+  display:        flex;
+  flex-direction: column;
+  gap:            0.6rem;
+}
+.receipt-header {
+  display:        flex;
+  align-items:    center;
+  gap:            0.4rem;
+  font-weight:    700;
+  font-size:      0.875rem;
+  color:          var(--color-primary);
+  font-family:    var(--font-mono, ui-monospace, monospace);
+}
+.receipt-mark { font-size: 1.1rem; }
+.receipt-row {
+  display:         flex;
+  align-items:     baseline;
+  justify-content: space-between;
+  gap:             1rem;
+  font-size:       0.8125rem;
+}
+.receipt-label { color: var(--color-muted); flex-shrink: 0; }
+.receipt-value { color: var(--color-text); text-align: right; word-break: break-all; }
+.receipt-url   { font-size: 0.7rem; }
+
+@media (max-width: 560px) {
+  .wm-banner { flex-direction: column; text-align: center; }
+}

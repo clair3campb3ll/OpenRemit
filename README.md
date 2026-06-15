@@ -113,6 +113,15 @@ Open [http://localhost:5173](http://localhost:5173).
 - `POST /api/requests/:id/fulfill` — payer accepts: runs the shared quote flow (`backend/src/lib/quoteFlow.ts`) and returns the same shape as `/api/remit/quote`, so the frontend continues into the normal consent → callback pipeline; `/api/callback` marks the ask COMPLETED when the payment succeeds
 - `POST /api/requests/:id/decline` (payer), `POST /api/requests/:id/cancel` (requester)
 
+**News ("The Ledger")** — a [Web Monetization](https://webmonetization.org/specification/) demo (all require a `Bearer` token). Seeded articles by a fictional journalist; the reader is the payer, `OP_WALLET_ADDRESS` is the monetization receiver.
+
+- `GET /api/news/posts` — list articles with a per-reader `unlocked` flag (never returns the paywalled body)
+- `GET /api/news/posts/:id` — one article; body returned when unlocked or the post is `freeToRead`, plus a `MonetizationEvent`-style receipt
+- `POST /api/news/posts/:id/wm-unlock` — **primary path**: the browser streams payments via `<link rel="monetization">`; this records (and best-effort verifies) the unlock. No grant/consent runs.
+- `POST /api/news/posts/:id/unlock` — **fallback** for browsers without a Web Monetization provider: returns a `QuoteResponse` that feeds the normal consent → callback flow
+
+> **Heads-up for the demo:** real Web Monetization needs a provider in the browser — install the [Web Monetization extension](https://webmonetization.org/) with a funded testnet wallet. Without one, articles show a notice and offer the one-off Open Payments fallback (so nothing looks broken). One article (`streaming: true` in `backend/src/lib/seedNews.ts`) is free to read and streams live up to a cap instead of unlocking.
+
 ---
 
 ## Architecture at a Glance
@@ -126,15 +135,19 @@ OpenRemit/
 │   │   ├── index.ts           ← Express entry point — mount routes here
 │   │   ├── config.ts          ← All env vars in one place
 │   │   ├── lib/
-│   │   │   └── openPayments.ts← SDK client singleton (start here for OP changes)
+│   │   │   ├── openPayments.ts← SDK client singleton (start here for OP changes)
+│   │   │   ├── quoteFlow.ts   ← shared resolve → incoming payment → quote flow
+│   │   │   └── seedNews.ts    ← seeds the demo News articles on first boot
 │   │   ├── db/
-│   │   │   ├── schema.ts      ← Database tables: users + transactions
+│   │   │   ├── schema.ts      ← Database tables (users, transactions, payment_requests, posts, post_unlocks)
 │   │   │   └── index.ts       ← Drizzle + libsql (SQLite file) instance
 │   │   ├── routes/
 │   │   │   ├── remit.ts       ← wallet-info / quote / consent / status / history
 │   │   │   ├── callback.ts    ← GNAP redirect handler
 │   │   │   ├── auth.ts        ← signup / login / profile (JWT)
-│   │   │   └── users.ts       ← user search + public profiles
+│   │   │   ├── users.ts       ← user search + public profiles
+│   │   │   ├── requests.ts    ← payment requests ("asks")
+│   │   │   └── news.ts        ← Web Monetization news demo (list / unlock / wm-unlock)
 │   │   └── middleware/
 │   │       ├── requireAuth.ts ← Bearer-token guard, sets req.user
 │   │       └── errorHandler.ts
@@ -156,7 +169,10 @@ OpenRemit/
             ├── quoteView.ts         ← Step 1: pick recipient + amount
             ├── consentView.ts       ← Step 2: confirm quote, redirect to wallet
             ├── statusView.ts        ← Step 3: poll & display result
-            └── historyView.ts       ← Past payments table
+            ├── historyView.ts       ← Past payments table
+            ├── receiveView.ts       ← Request money (create asks)
+            ├── newsView.ts          ← News article grid
+            └── newsArticleView.ts   ← Article + Web Monetization streaming / paywall
 ```
 
 ---

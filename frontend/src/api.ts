@@ -126,6 +126,38 @@ export interface PaymentRequestList {
   outgoing: PaymentRequestEntry[]; // asks I created — I get paid
 }
 
+/** A Web Monetization news post. The body is present only on the detail
+ *  endpoint and only once the current reader has unlocked it. */
+export interface NewsPost {
+  id:           string;
+  authorName:   string;
+  authorAvatar: string | null;
+  title:        string;
+  excerpt:      string;
+  category:     string | null;
+  /** Price in MAJOR units (e.g. "0.10"), denominated in the receiver's currency. */
+  price:           string;
+  priceAssetCode:  string;
+  priceAssetScale: number;
+  /** The "monetization receiver" — the app/journalist wallet readers pay. */
+  receiverWallet:  string;
+  /** The special article: payments stream live while reading, up to streamLimit. */
+  streaming:       boolean;
+  /** Body is returned without an unlock (used by the streaming article). */
+  freeToRead:      boolean;
+  /** Cap in MAJOR units for the streaming article; null for normal posts. */
+  streamLimit:     string | null;
+  unlocked:        boolean;
+  createdAt:       string;
+  // Detail-only fields:
+  body?:    string | null;
+  receipt?: {
+    method:          'WEB_MONETIZATION' | 'OPEN_PAYMENTS';
+    amountSent:      { value: string; assetCode: string; assetScale: number };
+    incomingPayment: string | null;
+  } | null;
+}
+
 export interface PublicProfile {
   user: {
     id:            string;
@@ -211,6 +243,21 @@ export const api = {
       post<{ status: 'DECLINED' }>(`/api/requests/${encodeURIComponent(id)}/decline`, {}, true),
     cancel: (id: string) =>
       post<{ status: 'CANCELLED' }>(`/api/requests/${encodeURIComponent(id)}/cancel`, {}, true),
+  },
+
+  news: {
+    list: () =>
+      get<NewsPost[]>('/api/news/posts', true),
+    get: (id: string) =>
+      get<NewsPost>(`/api/news/posts/${encodeURIComponent(id)}`, true),
+    /** Web Monetization path: record + verify an unlock the browser streamed.
+     *  streamedValue (MAJOR units) is the client's running total, used for the
+     *  receipt when server-side verification of the incoming payment isn't available. */
+    wmUnlock: (id: string, body: { incomingPayment?: string; streamedValue?: string }) =>
+      post<{ unlocked: boolean; verified: boolean }>(`/api/news/posts/${encodeURIComponent(id)}/wm-unlock`, body, true),
+    /** Fallback path: one-off Open Payments. Returns the same shape as quote(). */
+    unlock: (id: string) =>
+      post<QuoteResponse>(`/api/news/posts/${encodeURIComponent(id)}/unlock`, {}, true),
   },
 
   walletInfo: (url: string) =>

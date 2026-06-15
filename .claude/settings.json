@@ -46,7 +46,17 @@
       "Bash(rm -rf frontend/dist backend/dist)",
       "Read(//c/c/Users/marcl/OneDrive/Desktop/University/Masters/TA/ILF_Hackathon/OpenRemit/frontend/**)",
       "PowerShell(Get-NetTCPConnection -LocalPort 5173,5174,3001 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.OwningProcess -Force -ErrorAction Stop; \"killed PID $\\($_.OwningProcess\\)\" } catch {} }; \\(Get-NetTCPConnection -LocalPort 5173,5174,3001 -State Listen -ErrorAction SilentlyContinue\\).Count)",
-      "Bash(cd \"/c/Users/marcl/OneDrive/Desktop/University/Masters/TA/ILF_Hackathon/OpenRemit\" && sed -i 's/formatPointer\\(tx.counterpartyWallet\\)/toPointer\\(tx.counterpartyWallet\\)/g' frontend/src/views/historyView.ts && grep -c \"toPointer\" frontend/src/views/historyView.ts)"
+      "Bash(cd \"/c/Users/marcl/OneDrive/Desktop/University/Masters/TA/ILF_Hackathon/OpenRemit\" && sed -i 's/formatPointer\\(tx.counterpartyWallet\\)/toPointer\\(tx.counterpartyWallet\\)/g' frontend/src/views/historyView.ts && grep -c \"toPointer\" frontend/src/views/historyView.ts)",
+      "PowerShell(npm run db:push --workspace=backend 2>&1)",
+      "PowerShell(cd backend; npx tsc --noEmit 2>&1 | Select-Object -Last 40; Write-Host \"=== backend exit: $LASTEXITCODE ===\")",
+      "PowerShell(cd frontend; npx tsc --noEmit 2>&1 | Select-Object -Last 40; Write-Host \"=== frontend exit: $LASTEXITCODE ===\")",
+      "PowerShell(Set-Location 'C:\\\\Users\\\\marcl\\\\OneDrive\\\\Desktop\\\\University\\\\Masters\\\\TA\\\\ILF_Hackathon\\\\OpenRemit\\\\frontend'; npx tsc --noEmit 2>&1 | Select-Object -Last 40; Write-Host \"=== frontend exit: $LASTEXITCODE ===\")",
+      "PowerShell(Set-Location 'C:\\\\Users\\\\marcl\\\\OneDrive\\\\Desktop\\\\University\\\\Masters\\\\TA\\\\ILF_Hackathon\\\\OpenRemit'; npm run db:push --workspace=backend 2>&1 | Select-Object -Last 8; Write-Host \"=== db exit: $LASTEXITCODE ===\")",
+      "PowerShell(Set-Location 'C:\\\\Users\\\\marcl\\\\OneDrive\\\\Desktop\\\\University\\\\Masters\\\\TA\\\\ILF_Hackathon\\\\OpenRemit\\\\backend'; npx tsc --noEmit 2>&1 | Select-Object -Last 40; Write-Host \"=== backend exit: $LASTEXITCODE ===\")",
+      "PowerShell(Set-Location 'C:\\\\Users\\\\marcl\\\\OneDrive\\\\Desktop\\\\University\\\\Masters\\\\TA\\\\ILF_Hackathon\\\\OpenRemit'; npm run db:push --workspace=backend 2>&1 | Select-Object -Last 6; Write-Host \"=== db exit: $LASTEXITCODE ===\")",
+      "PowerShell(Set-Location 'C:\\\\Users\\\\marcl\\\\OneDrive\\\\Desktop\\\\University\\\\Masters\\\\TA\\\\ILF_Hackathon\\\\OpenRemit\\\\backend'; npx drizzle-kit push --force 2>&1 | Select-Object -Last 12; Write-Host \"=== db exit: $LASTEXITCODE ===\")",
+      "PowerShell(Set-Location 'C:\\\\Users\\\\marcl\\\\OneDrive\\\\Desktop\\\\University\\\\Masters\\\\TA\\\\ILF_Hackathon\\\\OpenRemit\\\\backend'; npx tsc --noEmit 2>&1 | Select-Object -Last 30; Write-Host \"=== backend exit: $LASTEXITCODE ===\")",
+      "PowerShell(Set-Location 'C:\\\\Users\\\\marcl\\\\OneDrive\\\\Desktop\\\\University\\\\Masters\\\\TA\\\\ILF_Hackathon\\\\OpenRemit\\\\frontend'; npx tsc --noEmit 2>&1 | Select-Object -Last 30; Write-Host \"=== frontend exit: $LASTEXITCODE ===\")"
     ],
     "additionalDirectories": [
       "c:\\c\\Users\\marcl\\OneDrive\\Desktop\\University\\Masters\\TA\\ILF_Hackathon\\OpenRemit\\frontend\\src\\views"
