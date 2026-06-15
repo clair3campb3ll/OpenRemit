@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db';
-import { transactions, paymentRequests } from '../db/schema';
+import { transactions, paymentRequests, postUnlocks } from '../db/schema';
 import { getClient, isFinalizedGrant } from '../lib/openPayments';
 import { config } from '../config';
 
@@ -41,6 +41,14 @@ callbackRouter.get('/', async (req, res) => {
   if (!tx || tx.status !== 'AWAITING_GRANT') {
     return res.redirect(`${config.frontendUrl}?status=failed&id=${transactionId}&reason=invalid_state`);
   }
+
+  // If this transaction unlocks a News post, send the reader back to that
+  // article on return (on either outcome) instead of the generic status view.
+  const [unlock] = await db
+    .select({ postId: postUnlocks.postId })
+    .from(postUnlocks)
+    .where(and(eq(postUnlocks.transactionId, transactionId), eq(postUnlocks.status, 'PENDING')));
+  const postSuffix = unlock ? `&post=${unlock.postId}` : '';
 
   try {
     const client = await getClient();
@@ -93,7 +101,16 @@ callbackRouter.get('/', async (req, res) => {
         eq(paymentRequests.status, 'PENDING'),
       ));
 
-    res.redirect(`${config.frontendUrl}?status=completed&id=${transactionId}`);
+    // If this payment unlocks a News post, grant access.
+    await db
+      .update(postUnlocks)
+      .set({ status: 'COMPLETED', updatedAt: new Date() })
+      .where(and(
+        eq(postUnlocks.transactionId, transactionId),
+        eq(postUnlocks.status, 'PENDING'),
+      ));
+
+    res.redirect(`${config.frontendUrl}?status=completed&id=${transactionId}${postSuffix}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[callback] Payment failed:', message);
@@ -107,6 +124,6 @@ callbackRouter.get('/', async (req, res) => {
       })
       .where(eq(transactions.id, transactionId));
 
-    res.redirect(`${config.frontendUrl}?status=failed&id=${transactionId}`);
+    res.redirect(`${config.frontendUrl}?status=failed&id=${transactionId}${postSuffix}`);
   }
 });

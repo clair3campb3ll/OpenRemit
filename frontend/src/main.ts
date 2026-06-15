@@ -11,6 +11,9 @@ import { renderReceiveView } from './views/receiveView';
 import { renderConsentView } from './views/consentView';
 import { renderStatusView }        from './views/statusView';
 import { renderPublicProfileView } from './views/publicProfileView';
+import { renderNewsView }          from './views/newsView';
+import { renderNewsArticleView }   from './views/newsArticleView';
+import type { UnlockOutcome }      from './views/newsArticleView';
 import type { QuoteResponse } from './api';
 
 const view    = document.getElementById('view')!;
@@ -54,11 +57,25 @@ async function showRemit(user: User): Promise<void> {
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 async function route(): Promise<void> {
+  // Leaving any view ends an active Web Monetization session (spec: removing the
+  // <link> stops the payment session). The News article view re-creates it.
+  document.querySelectorAll('link[rel="monetization"]').forEach((l) => l.remove());
+
   // GNAP callback: ?id=<uuid> takes priority over hash.
   // Strip the query string immediately so subsequent hashchange events don't re-enter this branch.
   const params   = new URLSearchParams(window.location.search);
   const returnId = params.get('id');
   if (returnId) {
+    // A News unlock carries ?post=<id>: send the reader back to that article
+    // (with the payment outcome) instead of the generic status view.
+    const returnPost = params.get('post');
+    if (returnPost && isLoggedIn()) {
+      const outcome = params.get('status') as UnlockOutcome;
+      history.replaceState({}, '', window.location.pathname + '#/news/' + returnPost);
+      updateNav('news');
+      renderNewsArticleView(view, returnPost, outcome);
+      return;
+    }
     // Use a distinct hash so any subsequent nav-link click changes the hash
     // and triggers hashchange. Preserving the old hash (e.g. #/remit) would
     // mean clicking "New Payment" → #/remit produces no hashchange event.
@@ -119,6 +136,15 @@ async function route(): Promise<void> {
   }
   if (path === '/receive') {
     renderReceiveView(view, cachedUser);
+    return;
+  }
+  if (path === '/news') {
+    await renderNewsView(view);
+    return;
+  }
+  if (path.startsWith('/news/')) {
+    const postId = path.slice('/news/'.length);
+    await renderNewsArticleView(view, postId, null);
     return;
   }
   if (path === '/history') {
