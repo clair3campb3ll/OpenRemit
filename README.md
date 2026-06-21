@@ -130,6 +130,8 @@ OpenRemit/
 ├── package.json               ← workspace root, `npm run dev` starts everything
 │
 ├── backend/
+|   ├── examples/
+|   │   └── p2p-open-payments-walkthrough.ts ← SDK usage example without web server or DB code (good reference for OP changes)
 │   ├── src/
 │   │   ├── index.ts           ← Express entry point — mount routes here
 │   │   ├── config.ts          ← All env vars in one place
@@ -183,6 +185,8 @@ OpenRemit/
 **Project:** OpenRemit — TypeScript monorepo. Backend: Node.js + Express + Drizzle ORM + SQLite. Frontend: Vite + vanilla TypeScript (no framework). Core SDK: `@interledger/open-payments`.
 
 **SDK Client:** Singleton in `backend/src/lib/openPayments.ts`. `getClient()` returns an authenticated client. `privateKey` is a file path — the SDK reads the `.pem` itself. All payment/quote `create` calls use the wallet's `resourceServer` URL (from `walletAddress.get()`), not the wallet address URL.
+
+**Full OpenPayments SDK P2P Example:** A full example is avaliable in an examples folder in this repository: `backend/examples/p2p-open-payments-walkthrough.ts`. It uses the same SDK patterns as the template but without any of the web server or database code, so it's a good reference for how to use the SDK in isolation.
 
 **Key SDK patterns (confirmed from working code):**
 
@@ -259,6 +263,16 @@ Replace `frontend/src/views/*.ts` with React components. The `api.ts` module (ty
 3. Point `OP_PRIVATE_KEY_PATH` to the key file on your server (or use a secrets manager)
 
 ---
+
+## Example Walkthrough
+
+The `backend/examples/p2p-open-payments-walkthrough.ts` file contains a standalone script that runs through the entire Open Payments flow without any web server or database code — it's a good reference for how to use the SDK in isolation, and is kept up-to-date with the latest SDK patterns. To run it:
+
+```bash
+cd backend
+npm install
+npx tsx examples/p2p-open-payments-walkthrough.ts
+```
 
 ## Troubleshooting
 
