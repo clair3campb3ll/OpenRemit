@@ -188,6 +188,13 @@ export const groups = sqliteTable('groups', {
   // Tracked pool balance (simulated — decremented on each POOL payout)
   poolBalance:            text('pool_balance').notNull(),
 
+  // Stored outgoing-payment grant access tokens (Variant B: one interactive
+  // approval up front, reused for all subsequent payouts against that wallet).
+  // Null = no stored token; payout route falls back to interactive grant flow.
+  // Cleared automatically if the token is rejected (exhausted or expired).
+  poolGrantToken:         text('pool_grant_token'),
+  backstopGrantToken:     text('backstop_grant_token'),
+
   assetCode:              text('asset_code').notNull(),
   assetScale:             integer('asset_scale').notNull(),
 

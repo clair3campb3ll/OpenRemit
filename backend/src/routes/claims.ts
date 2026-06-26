@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { Router } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, gte } from 'drizzle-orm';
 import { db } from '../db';
 import { groups, fireEvents, claims, transactions } from '../db/schema';
 import { requireAuth } from '../middleware/requireAuth';
@@ -48,6 +48,28 @@ claimsRouter.post('/', requireAuth, async (req, res) => {
   }
 
   const normalizedWallet = normaliseWalletAddress(claimantWallet);
+
+  // 30-day cooldown: reject if this household wallet already received a payout
+  // within the last 30 days. Prevents double-claiming across separate events.
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const [recentPaid] = await db
+    .select({ id: claims.id, createdAt: claims.createdAt })
+    .from(claims)
+    .where(and(
+      eq(claims.claimantWallet, normalizedWallet),
+      eq(claims.status, 'PAID'),
+      gte(claims.updatedAt, thirtyDaysAgo),
+    ));
+
+  if (recentPaid) {
+    const paidAt   = new Date(recentPaid.createdAt).toLocaleDateString();
+    const eligibleFrom = new Date(
+      new Date(recentPaid.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000
+    ).toLocaleDateString();
+    return res.status(409).json({
+      error: `This household received a payout on ${paidAt}. They are eligible again from ${eligibleFrom} (30-day cooldown).`,
+    });
+  }
 
   // Find or create the fire event for this location + approximate time.
   // "Same event" = same group + location + occurred within 6 hours of each other.
@@ -249,12 +271,101 @@ claimsRouter.post('/:id/payout', requireAuth, async (req, res) => {
     return res.status(502).json({ error: `Failed to create quote: ${msg}` });
   }
 
-  // ── Step 4: Interactive outgoing grant (operator approves payout) ──────────
   const sourceWallet = await opClient.walletAddress.get({
     url: normaliseWalletAddress(sourceWalletAddress),
   });
 
-  const nonce     = crypto.randomBytes(16).toString('hex');
+  // ── Step 4: Route by stored grant token ───────────────────────────────────
+  //
+  // STORED TOKEN PATH (Variant B):
+  //   A previous interactive approval already granted authority for this source
+  //   wallet up to the group's design capacity. Use the stored token to create
+  //   the outgoing payment immediately — no redirect needed.
+  //
+  // INTERACTIVE PATH (first use, or after token is exhausted/expired):
+  //   Request a new interactive grant sized to designCapacity so this one
+  //   approval covers all payouts in the event. /api/callback stores the
+  //   resulting token for future payouts.
+  const storedToken = payoutSource === 'POOL' ? group.poolGrantToken : group.backstopGrantToken;
+
+  if (storedToken) {
+    // ── Stored token: fire the payment directly ──────────────────────────────
+    let outgoingPayment: Awaited<ReturnType<typeof opClient.outgoingPayment.create>>;
+    try {
+      outgoingPayment = await opClient.outgoingPayment.create(
+        { url: sourceWallet.resourceServer, accessToken: storedToken },
+        {
+          walletAddress: sourceWallet.id,
+          quoteId:       quoteResult.quoteUrl,
+          metadata:      { description: 'Fireline relief payout' },
+        }
+      );
+    } catch (err) {
+      // Token exhausted (cap reached) or expired — clear it so the next payout
+      // triggers a fresh interactive grant.
+      await db
+        .update(groups)
+        .set(
+          payoutSource === 'POOL'
+            ? { poolGrantToken: null, updatedAt: new Date() }
+            : { backstopGrantToken: null, updatedAt: new Date() }
+        )
+        .where(eq(groups.id, group.id));
+
+      const msg = (err as any)?.description ?? (err instanceof Error ? err.message : String(err));
+      console.error('[claims] Stored token rejected — cleared. Re-trigger payout to re-authorise. err=%j', msg);
+      return res.status(502).json({
+        error: `Grant token exhausted or expired — please trigger payout again to re-authorise. (${msg})`,
+      });
+    }
+
+    // Mark transaction COMPLETED directly (no /callback round-trip)
+    await db
+      .update(transactions)
+      .set({ status: 'COMPLETED', outgoingPaymentUrl: outgoingPayment.id, updatedAt: new Date() })
+      .where(eq(transactions.id, quoteResult.transactionId));
+
+    // Link claim and mark PAID
+    await db
+      .update(claims)
+      .set({
+        transactionId: quoteResult.transactionId,
+        payoutAmount:  group.fixedPayoutAmount,
+        payoutSource,
+        status:        'PAID',
+        updatedAt:     new Date(),
+      })
+      .where(eq(claims.id, claim.id));
+
+    // Decrement pool balance when source is POOL
+    if (payoutSource === 'POOL') {
+      const newBalance = String(BigInt(group.poolBalance) - BigInt(group.fixedPayoutAmount));
+      await db
+        .update(groups)
+        .set({ poolBalance: newBalance, updatedAt: new Date() })
+        .where(eq(groups.id, group.id));
+    }
+
+    console.log(`[claims] Claim ${claim.id} PAID via stored grant token. source=${payoutSource} outgoingPayment=${outgoingPayment.id}`);
+
+    return res.json({
+      claimId:       claim.id,
+      transactionId: quoteResult.transactionId,
+      payoutSource,
+      classification,
+      quote:         quoteResult.quote,
+      // No interactUrl — payment completed immediately
+    });
+  }
+
+  // ── Interactive path: first use (no stored token) ─────────────────────────
+  // Size the grant cap to cover the whole event (designCapacity / fixedPayoutAmount
+  // gives the max number of claims; multiply by this payout's debitAmount — which
+  // is already in the wallet's actual currency — to get the cap in that currency).
+  const maxClaims    = BigInt(group.designCapacity) / BigInt(group.fixedPayoutAmount);
+  const capValue     = BigInt(quoteResult.quote.debitAmount.value) * maxClaims;
+
+  const nonce       = crypto.randomBytes(16).toString('hex');
   const callbackUrl = `${config.backendUrl}/api/callback?transactionId=${quoteResult.transactionId}`;
 
   const pendingGrant = await opClient.grant.request(
@@ -268,7 +379,7 @@ claimsRouter.post('/:id/payout', requireAuth, async (req, res) => {
             identifier: sourceWallet.id,
             limits: {
               debitAmount: {
-                value:      quoteResult.quote.debitAmount.value,
+                value:      String(capValue),
                 assetCode:  quoteResult.quote.debitAmount.assetCode,
                 assetScale: quoteResult.quote.debitAmount.assetScale,
               },
@@ -284,10 +395,9 @@ claimsRouter.post('/:id/payout', requireAuth, async (req, res) => {
   );
 
   if (!isPendingGrant(pendingGrant) || !pendingGrant.interact?.redirect) {
-    return res.status(500).json({ error: 'Expected an interactive outgoing-payment grant with a redirect URL. The source wallet may not support interactive grants.' });
+    return res.status(500).json({ error: 'Expected an interactive outgoing-payment grant with a redirect URL.' });
   }
 
-  // Store grant continuation details on the transaction (same pattern as /consent)
   await db
     .update(transactions)
     .set({
@@ -299,7 +409,7 @@ claimsRouter.post('/:id/payout', requireAuth, async (req, res) => {
     })
     .where(eq(transactions.id, quoteResult.transactionId));
 
-  // Link the transaction to the claim so /callback can mark it PAID
+  // Link the transaction to the claim so /callback can mark it PAID and store the token
   await db
     .update(claims)
     .set({

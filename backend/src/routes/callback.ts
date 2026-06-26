@@ -128,6 +128,29 @@ callbackRouter.get('/', async (req, res) => {
         .where(eq(transactions.id, transactionId));
     }
 
+    // If this is a claim payout, store the finalized access token on the group
+    // so subsequent payouts for the same source wallet skip the interactive
+    // redirect (Variant B: one approval, many payments against the cap).
+    const [claimForToken] = await db
+      .select({ groupId: claims.groupId, payoutSource: claims.payoutSource })
+      .from(claims)
+      .where(eq(claims.transactionId, transactionId));
+
+    if (claimForToken?.groupId) {
+      if (claimForToken.payoutSource === 'POOL') {
+        await db
+          .update(groups)
+          .set({ poolGrantToken: finalizedGrant.access_token.value, updatedAt: new Date() })
+          .where(eq(groups.id, claimForToken.groupId));
+      } else if (claimForToken.payoutSource === 'BACKSTOP') {
+        await db
+          .update(groups)
+          .set({ backstopGrantToken: finalizedGrant.access_token.value, updatedAt: new Date() })
+          .where(eq(groups.id, claimForToken.groupId));
+      }
+      console.log(`[callback] Stored ${claimForToken.payoutSource} grant token on group ${claimForToken.groupId}`);
+    }
+
     // Bug 3: quote expiry guard — the quote URL is useless once it expires, and
     // the resource server will reject the outgoing payment with a cryptic error.
     if (tx.quoteExpiresAt && new Date() > tx.quoteExpiresAt) {

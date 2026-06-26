@@ -34,6 +34,7 @@ export interface QuoteFlowInput {
 export interface QuoteFlowResult {
   transactionId: string;
   paymentType:   'FIXED_SEND' | 'FIXED_RECEIVE';
+  quoteUrl:      string; // full quote URL — needed for outgoingPayment.create()
   quote: {
     debitAmount:   { value: string; assetCode: string; assetScale: number };
     receiveAmount: { value: string; assetCode: string; assetScale: number };
@@ -184,6 +185,7 @@ export async function createQuoteTransaction(input: QuoteFlowInput): Promise<Quo
   return {
     transactionId: id,
     paymentType:   input.paymentType,
+    quoteUrl:      quote.id,
     quote: {
       debitAmount:   quote.debitAmount,
       receiveAmount: quote.receiveAmount,

@@ -4,7 +4,7 @@ import { eq, ne, and, desc } from 'drizzle-orm';
 import { isPendingGrant } from '@interledger/open-payments';
 import { db } from '../db';
 import { transactions, users } from '../db/schema';
-import { getClient, getClientForSource, normaliseWalletAddress } from '../lib/openPayments';
+import { getClient, getClientForSource, normaliseWalletAddress, isFinalizedGrant } from '../lib/openPayments';
 import { createQuoteTransaction } from '../lib/quoteFlow';
 import { config } from '../config';
 import { requireAuth } from '../middleware/requireAuth';
@@ -212,6 +212,77 @@ remitRouter.get('/status/:id', async (req, res, next) => {
 
     if (!tx) return res.status(404).json({ error: 'Transaction not found' });
     res.json(tx);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/remit/grant-probe
+//
+// Admin-only diagnostic. Attempts an outgoing-payment grant WITHOUT an
+// `interact` block against the pool wallet's auth server. The result tells us
+// whether wallet.interledger-test.dev supports non-interactive (pre-authorised)
+// outgoing grants:
+//
+//   type: "finalized" + hasToken: true  → Variant A works (no redirect needed)
+//   type: "pending"                     → wallet requires interactive consent;
+//                                         use Variant B (one interactive, reuse)
+//   error                               → auth server rejected the request
+//
+// Nothing is created or spent — no incoming payment, no quote, no payment.
+// The grant is requested with the minimum possible debitAmount (1 unit) purely
+// to observe the response shape.
+// ─────────────────────────────────────────────────────────────────────────────
+remitRouter.get('/grant-probe', requireAuth, async (req, res, next) => {
+  if (req.user!.role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Admin only.' });
+  }
+  try {
+    const client       = await getClient();
+    const poolWallet   = await client.walletAddress.get({
+      url: normaliseWalletAddress(config.op.walletAddress),
+    });
+
+    const grant = await client.grant.request(
+      { url: poolWallet.authServer },
+      {
+        access_token: {
+          access: [
+            {
+              type:       'outgoing-payment',
+              actions:    ['create', 'read'],
+              identifier: poolWallet.id,
+              limits: {
+                debitAmount: {
+                  value:      '1',
+                  assetCode:  poolWallet.assetCode,
+                  assetScale: poolWallet.assetScale,
+                },
+              },
+            },
+          ],
+        },
+        // No `interact` block — if the wallet supports pre-authorised grants it
+        // should return a finalized grant with a token immediately.
+      }
+    );
+
+    const isFinalized = isFinalizedGrant(grant);
+    const isPending   = isPendingGrant(grant);
+
+    console.log('[grant-probe] isPending=%s isFinalized=%s grant=%j',
+      isPending, isFinalized, grant);
+
+    res.json({
+      type:         isFinalized ? 'finalized' : isPending ? 'pending' : 'unknown',
+      hasToken:     isFinalized,
+      interactUrl:  isPending ? (grant as any).interact?.redirect ?? null : null,
+      continueUri:  (grant as any).continue?.uri ?? null,
+      authServer:   poolWallet.authServer,
+      walletId:     poolWallet.id,
+      assetCode:    poolWallet.assetCode,
+    });
   } catch (err) {
     next(err);
   }
