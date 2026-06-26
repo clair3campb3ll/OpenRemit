@@ -261,7 +261,7 @@ claimsRouter.post('/:id/payout', requireAuth, async (req, res) => {
       senderWalletAddress:   sourceWalletAddress,
       receiverWalletAddress: claim.claimantWallet,
       amount:                group.fixedPayoutAmount,
-      paymentType:           'FIXED_SEND',
+      paymentType:           'FIXED_RECEIVE',
       userId:                req.user!.id,
       client:                opClient,
     });

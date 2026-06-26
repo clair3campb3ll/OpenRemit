@@ -1,4 +1,4 @@
-import { api, Group, Claim, User } from '../api';
+import { api, Group, Claim, User, Member } from '../api';
 import { escapeHtml } from '../escape';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -184,6 +184,73 @@ function renderPoolStatus(group: Group): string {
   `;
 }
 
+// ─── Members section ─────────────────────────────────────────────────────────
+
+function renderMembersSection(group: Group, memberList: Member[], currentUser: User): string {
+  const statusLabel: Record<string, string> = {
+    PENDING_GRANT: 'Awaiting approval',
+    ACTIVE:        'Active',
+    PAUSED:        'Paused',
+    CANCELLED:     'Cancelled',
+  };
+  const statusCls: Record<string, string> = {
+    PENDING_GRANT: 'pending',
+    ACTIVE:        'completed',
+    PAUSED:        'failed',
+    CANCELLED:     'failed',
+  };
+
+  const rows = memberList.length
+    ? memberList.map(m => {
+        const amt    = (Number(m.contributionAmount) / Math.pow(10, m.assetScale)).toFixed(m.assetScale);
+        const status = m.status;
+        const btn    = status === 'ACTIVE' && currentUser.role === 'ADMIN'
+          ? `<button class="btn btn-primary btn-sm js-contribute" data-id="${escapeHtml(m.id)}" style="margin-top:.25rem">Run Contribution</button>`
+          : '';
+        return `
+          <div class="card" style="margin-bottom:.75rem" id="member-${escapeHtml(m.id)}">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+              <div>
+                <code style="font-size:.85rem">${escapeHtml(m.walletAddress)}</code>
+                <div class="muted" style="font-size:.8rem">${amt} ${escapeHtml(m.assetCode)} / month</div>
+              </div>
+              <div style="text-align:right">
+                <span class="status-badge status-${statusCls[status] ?? 'pending'}">${statusLabel[status] ?? status}</span>
+                ${btn}
+                <span class="error-msg js-member-error" data-id="${escapeHtml(m.id)}" style="display:none;font-size:.85rem;display:block"></span>
+              </div>
+            </div>
+          </div>`;
+      }).join('')
+    : `<p class="muted" style="font-size:.9rem">No members enrolled yet.</p>`;
+
+  const enrollForm = `
+    <div class="card" style="margin-top:1rem">
+      <h4 style="margin-top:0">Enrol a Member</h4>
+      <form id="enroll-form">
+        <div class="form-group">
+          <label for="enroll-wallet">Member's wallet address</label>
+          <input id="enroll-wallet" type="text" placeholder="$ilp.interledger-test.dev/member" required />
+        </div>
+        <div class="form-group">
+          <label for="enroll-amount">Monthly contribution (major units, e.g. 5.00)</label>
+          <input id="enroll-amount" type="number" step="0.01" min="0.01" placeholder="5.00" required />
+        </div>
+        <button type="submit" class="btn btn-primary">Enrol &amp; Approve Grant</button>
+        <span id="enroll-error" class="error-msg" style="display:none;margin-left:.75rem"></span>
+      </form>
+    </div>`;
+
+  return `
+    <h3 style="margin-top:2rem;margin-bottom:.75rem">Members &amp; Contributions</h3>
+    <p class="muted" style="font-size:.85rem;margin-bottom:1rem">
+      Each member approves one recurring grant — the app debits their wallet monthly
+      and adds it to the pool. No re-approval needed after enrolment.
+    </p>
+    ${rows}
+    ${enrollForm}`;
+}
+
 // ─── Main render ─────────────────────────────────────────────────────────────
 
 export async function renderClaimsView(container: HTMLElement, currentUser: User): Promise<void> {
@@ -191,9 +258,14 @@ export async function renderClaimsView(container: HTMLElement, currentUser: User
 
   let groups: Group[];
   let allClaims: Claim[];
+  let memberList: Member[];
 
   try {
-    [groups, allClaims] = await Promise.all([api.claims.groups(), api.claims.list()]);
+    [groups, allClaims, memberList] = await Promise.all([
+      api.claims.groups(),
+      api.claims.list(),
+      api.members.list(),
+    ]);
   } catch (err) {
     container.innerHTML = `<div class="card"><p class="error-msg">Failed to load claims: ${escapeHtml(String(err))}</p></div>`;
     return;
@@ -243,6 +315,7 @@ export async function renderClaimsView(container: HTMLElement, currentUser: User
     <h3 style="margin-bottom:.75rem">All Claims</h3>
     ${roleNote}
     <div id="claims-list">${claimRows}</div>
+    ${renderMembersSection(group, memberList, currentUser)}
   `;
 
   // ── Form submit ──────────────────────────────────────────────────────────────
@@ -275,6 +348,30 @@ export async function renderClaimsView(container: HTMLElement, currentUser: User
       submitBtn.textContent = 'File Claim';
     }
   });
+
+  // ── Enroll form ──────────────────────────────────────────────────────────────
+  const enrollForm  = container.querySelector<HTMLFormElement>('#enroll-form');
+  const enrollErrEl = container.querySelector<HTMLElement>('#enroll-error');
+  if (enrollForm && enrollErrEl) {
+    enrollForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      enrollErrEl.style.display = 'none';
+      const walletAddress          = container.querySelector<HTMLInputElement>('#enroll-wallet')!.value.trim();
+      const contributionAmountMajor = container.querySelector<HTMLInputElement>('#enroll-amount')!.value.trim();
+      const submitBtn = enrollForm.querySelector<HTMLButtonElement>('button[type=submit]')!;
+      submitBtn.disabled    = true;
+      submitBtn.textContent = 'Requesting grant…';
+      try {
+        const result = await api.members.enroll({ groupId: group.id, walletAddress, contributionAmountMajor });
+        window.location.href = result.interactUrl;
+      } catch (err) {
+        enrollErrEl.textContent   = String(err);
+        enrollErrEl.style.display = 'inline';
+        submitBtn.disabled        = false;
+        submitBtn.textContent     = 'Enrol & Approve Grant';
+      }
+    });
+  }
 
   // ── Verify / Reject / Payout buttons ─────────────────────────────────────────
   const prevClickHandler = (container as any)._claimsClickHandler;
@@ -310,6 +407,23 @@ export async function renderClaimsView(container: HTMLElement, currentUser: User
         showRowError(container, id, String(err));
         btn.disabled    = false;
         btn.textContent = 'Reject';
+      }
+    }
+
+    if (btn.classList.contains('js-contribute')) {
+      const id = btn.dataset.id!;
+      btn.disabled    = true;
+      btn.textContent = 'Processing…';
+      try {
+        const result = await api.members.contribute(id);
+        const amt = (Number(result.contributionAmount) / Math.pow(10, 2)).toFixed(2);
+        window.alert(`Contribution complete ✓\n\n${amt} ${result.assetCode} received into pool.\nNew pool balance: ${result.newPoolBalance}`);
+        await renderClaimsView(container, currentUser);
+      } catch (err) {
+        const errEl = container.querySelector<HTMLElement>(`.js-member-error[data-id="${id}"]`);
+        if (errEl) { errEl.textContent = String(err); errEl.style.display = 'block'; }
+        btn.disabled    = false;
+        btn.textContent = 'Run Contribution';
       }
     }
 

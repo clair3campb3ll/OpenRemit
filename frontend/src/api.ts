@@ -211,6 +211,37 @@ export interface Claim {
   event:          FireEvent | null;
 }
 
+export interface Member {
+  id:                 string;
+  userId:             string | null;
+  groupId:            string;
+  walletAddress:      string;
+  contributionAmount: string;
+  assetCode:          string;
+  assetScale:         number;
+  status:             'PENDING_GRANT' | 'ACTIVE' | 'PAUSED' | 'CANCELLED';
+  createdAt:          string;
+  updatedAt:          string;
+}
+
+export interface EnrollResponse {
+  memberId:    string;
+  interactUrl: string;
+}
+
+export interface ContributeResponse {
+  memberId:           string;
+  transactionId:      string;
+  contributionAmount: string;
+  assetCode:          string;
+  newPoolBalance:     string;
+  quote: {
+    debitAmount:   { value: string; assetCode: string; assetScale: number };
+    receiveAmount: { value: string; assetCode: string; assetScale: number };
+    expiresAt?:    string;
+  };
+}
+
 export interface PayoutResponse {
   claimId:       string;
   transactionId: string;
@@ -344,5 +375,12 @@ export const api = {
     verify:  (id: string) => patch<Claim>(`/api/claims/${encodeURIComponent(id)}/verify`, {}),
     reject:  (id: string) => patch<Claim>(`/api/claims/${encodeURIComponent(id)}/reject`, {}),
     payout:  (id: string) => post<PayoutResponse>(`/api/claims/${encodeURIComponent(id)}/payout`, {}, true),
+  },
+
+  members: {
+    list:       () => get<Member[]>('/api/members', true),
+    enroll:     (body: { groupId: string; walletAddress: string; contributionAmountMajor: string }) =>
+      post<EnrollResponse>('/api/members/enroll', body, true),
+    contribute: (id: string) => post<ContributeResponse>(`/api/members/${encodeURIComponent(id)}/contribute`, {}, true),
   },
 };

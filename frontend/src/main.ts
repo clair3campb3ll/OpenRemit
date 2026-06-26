@@ -57,6 +57,25 @@ async function route(): Promise<void> {
 
   // GNAP callback: ?id=<uuid> takes priority over hash.
   const params   = new URLSearchParams(window.location.search);
+
+  // Member enrollment callback: ?enroll=success|declined|failed
+  const enrollResult = params.get('enroll');
+  if (enrollResult) {
+    history.replaceState({}, '', window.location.pathname + '#/claims');
+    if (enrollResult === 'success') {
+      setTimeout(() => alert('Member enrolled successfully — recurring grant active.'), 100);
+    } else if (enrollResult === 'declined') {
+      setTimeout(() => alert('Enrolment cancelled — the member declined at their wallet.'), 100);
+    } else {
+      setTimeout(() => alert('Enrolment failed — please try again.'), 100);
+    }
+    if (isLoggedIn()) {
+      const user = await api.auth.me().catch(() => null);
+      if (user) { cachedUser = user; await renderClaimsView(view, user); }
+    }
+    return;
+  }
+
   const returnId = params.get('id');
   if (returnId) {
     const returnPost = params.get('post');

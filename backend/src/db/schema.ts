@@ -256,3 +256,27 @@ export const claims = sqliteTable('claims', {
 
 export type Claim    = typeof claims.$inferSelect;
 export type NewClaim = typeof claims.$inferInsert;
+
+// A group member who has enrolled in recurring contributions.
+// The member approves one interactive outgoing-payment grant (with an interval)
+// and the backend reuses the stored token to execute each contribution cycle.
+// Status: PENDING_GRANT → ACTIVE (grant approved) | PAUSED | CANCELLED
+export const members = sqliteTable('members', {
+  id:                 text('id').primaryKey(),
+  userId:             text('user_id').references(() => users.id),
+  groupId:            text('group_id').notNull().references(() => groups.id),
+  walletAddress:      text('wallet_address').notNull(),
+  contributionAmount: text('contribution_amount').notNull(), // smallest unit of wallet's currency
+  assetCode:          text('asset_code').notNull(),
+  assetScale:         integer('asset_scale').notNull(),
+  status:             text('status').notNull().default('PENDING_GRANT'),
+  grantToken:         text('grant_token'),
+  grantContinueUri:   text('grant_continue_uri'),
+  grantContinueToken: text('grant_continue_token'),
+  grantInteractNonce: text('grant_interact_nonce'),
+  createdAt:          integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt:          integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+export type Member    = typeof members.$inferSelect;
+export type NewMember = typeof members.$inferInsert;
