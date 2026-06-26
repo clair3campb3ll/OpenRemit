@@ -41,6 +41,12 @@ callbackRouter.get('/', async (req, res) => {
     .from(transactions)
     .where(eq(transactions.id, transactionId));
 
+  // Bug 4: double-fire guard — if browser retries the callback after the payment
+  // already completed, redirect to success instead of attempting grant.continue again
+  // (which would 403 because the interact_ref was already consumed).
+  if (tx?.status === 'COMPLETED') {
+    return res.redirect(`${config.frontendUrl}?status=completed&id=${transactionId}`);
+  }
   if (!tx || tx.status !== 'AWAITING_GRANT') {
     return res.redirect(`${config.frontendUrl}?status=failed&id=${transactionId}&reason=invalid_state`);
   }
@@ -96,16 +102,36 @@ callbackRouter.get('/', async (req, res) => {
       console.log('[op:grant-continue:ok] txId=%s hasAccessToken=%s',
         transactionId, isFinalizedGrant(finalizedGrant));
     } catch (contErr) {
-      const status = (contErr as any)?.status ?? (contErr as any)?.response?.status ?? 'unknown';
-      const body   = (contErr as any)?.body ?? (contErr as any)?.message ?? String(contErr);
+      const status      = (contErr as any)?.status      ?? 'unknown';
+      const description = (contErr as any)?.description ?? (contErr as any)?.message ?? String(contErr);
       console.error('[op:grant-continue:fail] txId=%s continueUri=%s HTTP=%s body=%j',
-        transactionId, tx.grantContinueUri, status, body);
+        transactionId, tx.grantContinueUri, status, description);
       throw contErr;
     }
 
     if (!isFinalizedGrant(finalizedGrant)) {
       console.error('[op:grant-continue:no-token] txId=%s grant=%j', transactionId, finalizedGrant);
       throw new Error('Grant continuation did not return an access token. Consent may have been denied or expired.');
+    }
+
+    // Bug 5: GNAP rotates the continuation token on every successful continue call.
+    // Persist the new tokens so any cancel/retry scenario uses the current ones.
+    const rotatedContinue = (finalizedGrant as any).continue;
+    if (rotatedContinue?.uri) {
+      await db
+        .update(transactions)
+        .set({
+          grantContinueUri:   rotatedContinue.uri,
+          grantContinueToken: rotatedContinue.access_token?.value ?? null,
+          updatedAt:          new Date(),
+        })
+        .where(eq(transactions.id, transactionId));
+    }
+
+    // Bug 3: quote expiry guard — the quote URL is useless once it expires, and
+    // the resource server will reject the outgoing payment with a cryptic error.
+    if (tx.quoteExpiresAt && new Date() > tx.quoteExpiresAt) {
+      throw new Error('Quote expired before consent completed — please start a new payment.');
     }
 
     // Resolve the sender's resource server URL to create the outgoing payment
@@ -132,10 +158,10 @@ callbackRouter.get('/', async (req, res) => {
       console.log('[op:outgoing-payment-create:ok] txId=%s outgoingPaymentId=%s',
         transactionId, outgoingPayment.id);
     } catch (opErr) {
-      const status = (opErr as any)?.status ?? (opErr as any)?.response?.status ?? 'unknown';
-      const body   = (opErr as any)?.body ?? (opErr as any)?.message ?? String(opErr);
+      const status      = (opErr as any)?.status      ?? 'unknown';
+      const description = (opErr as any)?.description ?? (opErr as any)?.message ?? String(opErr);
       console.error('[op:outgoing-payment-create:fail] txId=%s resourceServer=%s walletId=%s quoteId=%s HTTP=%s body=%j',
-        transactionId, sendingWallet.resourceServer, sendingWallet.id, tx.quoteUrl, status, body);
+        transactionId, sendingWallet.resourceServer, sendingWallet.id, tx.quoteUrl, status, description);
       throw opErr;
     }
 
@@ -198,8 +224,8 @@ callbackRouter.get('/', async (req, res) => {
 
     res.redirect(`${config.frontendUrl}?status=completed&id=${transactionId}${postSuffix}`);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[callback] Payment failed:', message);
+    const message = (err as any)?.description ?? (err instanceof Error ? err.message : String(err));
+    console.error('[callback] Payment failed: HTTP=%s body=%j', (err as any)?.status ?? 'n/a', message);
 
     await db
       .update(transactions)

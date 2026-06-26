@@ -70,10 +70,10 @@ export async function createQuoteTransaction(input: QuoteFlowInput): Promise<Quo
     );
     console.log('[op:incoming-grant-request:ok] finalized=%s', isFinalizedGrant(incomingPaymentGrant));
   } catch (err) {
-    const status = (err as any)?.status ?? (err as any)?.response?.status ?? 'unknown';
-    const body   = (err as any)?.body ?? (err as any)?.message ?? String(err);
+    const status      = (err as any)?.status      ?? 'unknown';
+    const description = (err as any)?.description ?? (err as any)?.message ?? String(err);
     console.error('[op:incoming-grant-request:fail] receiverAuthServer=%s HTTP=%s body=%j',
-      receivingWallet.authServer, status, body);
+      receivingWallet.authServer, status, description);
     throw err;
   }
   if (!isFinalizedGrant(incomingPaymentGrant)) {
@@ -115,10 +115,10 @@ export async function createQuoteTransaction(input: QuoteFlowInput): Promise<Quo
     );
     console.log('[op:quote-grant-request:ok] finalized=%s', isFinalizedGrant(quoteGrant));
   } catch (err) {
-    const status = (err as any)?.status ?? (err as any)?.response?.status ?? 'unknown';
-    const body   = (err as any)?.body ?? (err as any)?.message ?? String(err);
+    const status      = (err as any)?.status      ?? 'unknown';
+    const description = (err as any)?.description ?? (err as any)?.message ?? String(err);
     console.error('[op:quote-grant-request:fail] senderAuthServer=%s HTTP=%s body=%j',
-      sendingWallet.authServer, status, body);
+      sendingWallet.authServer, status, description);
     throw err;
   }
   if (!isFinalizedGrant(quoteGrant)) {

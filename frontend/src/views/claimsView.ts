@@ -277,7 +277,10 @@ export async function renderClaimsView(container: HTMLElement, currentUser: User
   });
 
   // ── Verify / Reject / Payout buttons ─────────────────────────────────────────
-  container.addEventListener('click', async (e) => {
+  const prevClickHandler = (container as any)._claimsClickHandler;
+  if (prevClickHandler) container.removeEventListener('click', prevClickHandler);
+
+  const claimsClickHandler = async (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     if (!(target instanceof HTMLButtonElement)) return;
     const btn = target;
@@ -338,7 +341,10 @@ export async function renderClaimsView(container: HTMLElement, currentUser: User
         btn.textContent = 'Trigger Payout';
       }
     }
-  });
+  };
+
+  (container as any)._claimsClickHandler = claimsClickHandler;
+  container.addEventListener('click', claimsClickHandler);
 }
 
 function showRowError(container: HTMLElement, claimId: string, msg: string): void {

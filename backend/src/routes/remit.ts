@@ -168,8 +168,6 @@ remitRouter.post('/consent', requireAuth, async (req, res, next) => {
 
     console.log('[op:consent:stored] txId=%s status=AWAITING_GRANT interactUrl=%s',
       transactionId, outgoingGrant.interact.redirect);
-    console.log('[op:consent:complete] txId=%s status=AWAITING_GRANT interactUrl=%s',
-      transactionId, outgoingGrant.interact.redirect);
     res.json({ interactUrl: outgoingGrant.interact.redirect });
   } catch (err) {
     next(err);
