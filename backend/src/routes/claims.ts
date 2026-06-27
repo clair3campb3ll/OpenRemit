@@ -43,32 +43,34 @@ claimsRouter.post('/', requireAuth, async (req, res) => {
 
   // 48-hour reporting window: claim must be filed within 48h of fire
   const hoursSinceFire = (Date.now() - occurredDate.getTime()) / (1000 * 60 * 60);
-  if (hoursSinceFire > 48) {
+  if (!config.devSkipClaimGuards && hoursSinceFire > 48) {
     return res.status(400).json({ error: '48-hour reporting window has closed for this event.' });
   }
 
   const normalizedWallet = normaliseWalletAddress(claimantWallet);
 
-  // 30-day cooldown: reject if this household wallet already received a payout
-  // within the last 30 days. Prevents double-claiming across separate events.
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const [recentPaid] = await db
-    .select({ id: claims.id, createdAt: claims.createdAt })
-    .from(claims)
-    .where(and(
-      eq(claims.claimantWallet, normalizedWallet),
-      eq(claims.status, 'PAID'),
-      gte(claims.updatedAt, thirtyDaysAgo),
-    ));
+  if (!config.devSkipClaimGuards) {
+    // 30-day cooldown: reject if this household wallet already received a payout
+    // within the last 30 days. Prevents double-claiming across separate events.
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const [recentPaid] = await db
+      .select({ id: claims.id, createdAt: claims.createdAt })
+      .from(claims)
+      .where(and(
+        eq(claims.claimantWallet, normalizedWallet),
+        eq(claims.status, 'PAID'),
+        gte(claims.updatedAt, thirtyDaysAgo),
+      ));
 
-  if (recentPaid) {
-    const paidAt   = new Date(recentPaid.createdAt).toLocaleDateString();
-    const eligibleFrom = new Date(
-      new Date(recentPaid.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000
-    ).toLocaleDateString();
-    return res.status(409).json({
-      error: `This household received a payout on ${paidAt}. They are eligible again from ${eligibleFrom} (30-day cooldown).`,
-    });
+    if (recentPaid) {
+      const paidAt   = new Date(recentPaid.createdAt).toLocaleDateString();
+      const eligibleFrom = new Date(
+        new Date(recentPaid.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000
+      ).toLocaleDateString();
+      return res.status(409).json({
+        error: `This household received a payout on ${paidAt}. They are eligible again from ${eligibleFrom} (30-day cooldown).`,
+      });
+    }
   }
 
   // Find or create the fire event for this location + approximate time.
@@ -242,18 +244,27 @@ claimsRouter.post('/:id/payout', requireAuth, async (req, res) => {
   const payout   = BigInt(group.fixedPayoutAmount);
   const floor    = BigInt(group.reserveFloor);
   const canUsePool = !isCovariate && (poolBal - payout >= floor);
-  const payoutSource: 'POOL' | 'BACKSTOP' = canUsePool ? 'POOL' : 'BACKSTOP';
+  // Fall back to POOL if BACKSTOP is not configured (missing private key).
+  const backstopReady = !!(config.backstop.walletAddress && config.backstop.keyId && config.backstop.privateKeyPath);
+  const payoutSource: 'POOL' | 'BACKSTOP' = (canUsePool || !backstopReady) ? 'POOL' : 'BACKSTOP';
 
   const sourceWalletAddress = payoutSource === 'POOL'
     ? group.poolWalletAddress
     : group.backstopWalletAddress;
 
   console.log(
-    `[claims] Payout for claim ${claim.id}: event=${classification}, source=${payoutSource}, pool=${group.poolBalance}, payout=${group.fixedPayoutAmount}, floor=${group.reserveFloor}`
+    `[claims] Payout for claim ${claim.id}: event=${classification}, source=${payoutSource}, pool=${group.poolBalance}, payout=${group.fixedPayoutAmount}, floor=${group.reserveFloor}, backstopReady=${backstopReady}`
   );
 
   // ── Step 3: QuoteFlow (source wallet → claimant wallet) ───────────────────
-  const opClient = await getClientForSource(payoutSource);
+  let opClient: Awaited<ReturnType<typeof getClientForSource>>;
+  try {
+    opClient = await getClientForSource(payoutSource);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[claims] Failed to initialise Open Payments client for source=%s: %s', payoutSource, msg);
+    return res.status(500).json({ error: `Payment client not available for source ${payoutSource}: ${msg}` });
+  }
 
   let quoteResult: Awaited<ReturnType<typeof createQuoteTransaction>>;
   try {
@@ -290,7 +301,7 @@ claimsRouter.post('/:id/payout', requireAuth, async (req, res) => {
 
   if (storedToken) {
     // ── Stored token: fire the payment directly ──────────────────────────────
-    let outgoingPayment: Awaited<ReturnType<typeof opClient.outgoingPayment.create>>;
+    let outgoingPayment: Awaited<ReturnType<typeof opClient.outgoingPayment.create>> | null = null;
     try {
       outgoingPayment = await opClient.outgoingPayment.create(
         { url: sourceWallet.resourceServer, accessToken: storedToken },
@@ -301,8 +312,8 @@ claimsRouter.post('/:id/payout', requireAuth, async (req, res) => {
         }
       );
     } catch (err) {
-      // Token exhausted (cap reached) or expired — clear it so the next payout
-      // triggers a fresh interactive grant.
+      // Token exhausted (cap reached) or expired — clear it and fall through to
+      // the interactive grant below so re-authorisation happens in the same request.
       await db
         .update(groups)
         .set(
@@ -313,52 +324,51 @@ claimsRouter.post('/:id/payout', requireAuth, async (req, res) => {
         .where(eq(groups.id, group.id));
 
       const msg = (err as any)?.description ?? (err instanceof Error ? err.message : String(err));
-      console.error('[claims] Stored token rejected — cleared. Re-trigger payout to re-authorise. err=%j', msg);
-      return res.status(502).json({
-        error: `Grant token exhausted or expired — please trigger payout again to re-authorise. (${msg})`,
+      console.warn('[claims] Stored token rejected — falling through to interactive re-auth. err=%j', msg);
+    }
+
+    if (outgoingPayment) {
+      // Mark transaction COMPLETED directly (no /callback round-trip)
+      await db
+        .update(transactions)
+        .set({ status: 'COMPLETED', outgoingPaymentUrl: outgoingPayment.id, updatedAt: new Date() })
+        .where(eq(transactions.id, quoteResult.transactionId));
+
+      // Link claim and mark PAID
+      await db
+        .update(claims)
+        .set({
+          transactionId: quoteResult.transactionId,
+          payoutAmount:  group.fixedPayoutAmount,
+          payoutSource,
+          status:        'PAID',
+          updatedAt:     new Date(),
+        })
+        .where(eq(claims.id, claim.id));
+
+      // Decrement pool balance when source is POOL
+      if (payoutSource === 'POOL') {
+        const newBalance = String(BigInt(group.poolBalance) - BigInt(group.fixedPayoutAmount));
+        await db
+          .update(groups)
+          .set({ poolBalance: newBalance, updatedAt: new Date() })
+          .where(eq(groups.id, group.id));
+      }
+
+      console.log(`[claims] Claim ${claim.id} PAID via stored grant token. source=${payoutSource} outgoingPayment=${outgoingPayment.id}`);
+
+      return res.json({
+        claimId:       claim.id,
+        transactionId: quoteResult.transactionId,
+        payoutSource,
+        classification,
+        quote:         quoteResult.quote,
+        // No interactUrl — payment completed immediately
       });
     }
-
-    // Mark transaction COMPLETED directly (no /callback round-trip)
-    await db
-      .update(transactions)
-      .set({ status: 'COMPLETED', outgoingPaymentUrl: outgoingPayment.id, updatedAt: new Date() })
-      .where(eq(transactions.id, quoteResult.transactionId));
-
-    // Link claim and mark PAID
-    await db
-      .update(claims)
-      .set({
-        transactionId: quoteResult.transactionId,
-        payoutAmount:  group.fixedPayoutAmount,
-        payoutSource,
-        status:        'PAID',
-        updatedAt:     new Date(),
-      })
-      .where(eq(claims.id, claim.id));
-
-    // Decrement pool balance when source is POOL
-    if (payoutSource === 'POOL') {
-      const newBalance = String(BigInt(group.poolBalance) - BigInt(group.fixedPayoutAmount));
-      await db
-        .update(groups)
-        .set({ poolBalance: newBalance, updatedAt: new Date() })
-        .where(eq(groups.id, group.id));
-    }
-
-    console.log(`[claims] Claim ${claim.id} PAID via stored grant token. source=${payoutSource} outgoingPayment=${outgoingPayment.id}`);
-
-    return res.json({
-      claimId:       claim.id,
-      transactionId: quoteResult.transactionId,
-      payoutSource,
-      classification,
-      quote:         quoteResult.quote,
-      // No interactUrl — payment completed immediately
-    });
   }
 
-  // ── Interactive path: first use (no stored token) ─────────────────────────
+  // ── Interactive path: first use (no stored token) or token expired/exhausted ─
   // Size the grant cap to cover the whole event (designCapacity / fixedPayoutAmount
   // gives the max number of claims; multiply by this payout's debitAmount — which
   // is already in the wallet's actual currency — to get the cap in that currency).

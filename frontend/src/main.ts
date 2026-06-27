@@ -64,13 +64,14 @@ async function route(): Promise<void> {
   const enrollResult = params.get('enroll');
   if (enrollResult) {
     history.replaceState({}, '', window.location.pathname + '#/claims');
-    if (enrollResult === 'success') {
+    if (enrollResult === 'active') {
       setTimeout(() => alert('Member enrolled successfully — recurring grant active.'), 100);
     } else if (enrollResult === 'declined') {
       setTimeout(() => alert('Enrolment cancelled — the member declined at their wallet.'), 100);
     } else {
       setTimeout(() => alert('Enrolment failed — please try again.'), 100);
     }
+    updateNav('claims');
     if (isLoggedIn()) {
       const user = await api.auth.me().catch(() => null);
       if (user) { cachedUser = user; await renderClaimsView(view, user); }

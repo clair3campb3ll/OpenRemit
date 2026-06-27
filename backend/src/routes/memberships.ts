@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { memberships, groups, users } from '../db/schema';
 import { requireAuth } from '../middleware/requireAuth';
@@ -35,7 +35,9 @@ membershipsRouter.get('/summary', requireAuth, async (req, res, next) => {
     const [mine] = await db
       .select()
       .from(memberships)
-      .where(and(eq(memberships.groupId, group.id), eq(memberships.userId, req.user!.id)));
+      .where(and(eq(memberships.groupId, group.id), eq(memberships.userId, req.user!.id)))
+      .orderBy(desc(memberships.createdAt))
+      .limit(1);
 
     res.json({
       memberCount:        active.length,

@@ -80,16 +80,10 @@ export async function renderHistoryView(container: HTMLElement): Promise<void> {
                    <td class="history-date-cell">${formatDate(tx.createdAt)}</td>
                    <td class="history-amount-cell amount-${tx.direction}">${formatAmount(tx)}</td>
                    <td>
-                     ${tx.counterpartyId
-                       ? `<a class="history-recip-link" href="#/user/${encodeURIComponent(tx.counterpartyId)}">
-                            <div class="history-recip-name">${escapeHtml(tx.counterpartyName ?? '—')}</div>
-                            <div class="history-recip-pointer">${escapeHtml(toPointer(tx.counterpartyWallet))}</div>
-                          </a>`
-                       : `<div>
-                            <div class="history-recip-name">${escapeHtml(tx.counterpartyName ?? '—')}</div>
-                            <div class="history-recip-pointer">${escapeHtml(toPointer(tx.counterpartyWallet))}</div>
-                          </div>`
-                     }
+                     <div>
+                       <div class="history-recip-name">${escapeHtml(tx.counterpartyName ?? '—')}</div>
+                       <div class="history-recip-pointer">${escapeHtml(toPointer(tx.counterpartyWallet))}</div>
+                     </div>
                    </td>
                    <td>
                      ${statusBadge(tx)}

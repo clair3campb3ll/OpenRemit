@@ -39,6 +39,10 @@ export const config = {
   },
 
   jwtSecret: process.env.JWT_SECRET ?? 'changeme',
+
+  // Skip the 48-hour reporting window and 30-day cooldown in non-production
+  // environments so claims can be tested repeatedly without new accounts.
+  devSkipClaimGuards: process.env.NODE_ENV !== 'production',
 };
 
 if (config.jwtSecret === 'changeme') {

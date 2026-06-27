@@ -34,6 +34,13 @@ export async function seedGroup(): Promise<void> {
         updatedAt:         new Date(),
       })
       .where(eq(groups.assetCode, 'USD'));
+
+    // Sync wallet addresses from .env — allows changing OP_WALLET_ADDRESS or
+    // BACKSTOP_WALLET_ADDRESS without needing to wipe and re-seed the database.
+    const updates: Partial<typeof groups.$inferInsert> = { updatedAt: new Date() };
+    if (config.op.walletAddress)       updates.poolWalletAddress     = config.op.walletAddress;
+    if (config.backstop.walletAddress) updates.backstopWalletAddress = config.backstop.walletAddress;
+    await db.update(groups).set(updates);
     return;
   }
 

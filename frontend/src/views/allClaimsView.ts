@@ -162,17 +162,23 @@ export async function renderAllClaimsView(container: HTMLElement, currentUser: U
         const fromLabel = result.payoutSource === 'BACKSTOP'
           ? 'BACKSTOP (covariate event or pool below floor)'
           : 'POOL (standard single-incident payout)';
-        const confirmed = window.confirm(
-          `Payout approved:\n\n` +
-          `Classification: ${result.classification}\n` +
-          `Funding source: ${fromLabel}\n\n` +
-          `You will be redirected to your wallet to authorise the transfer.\n` +
-          `Click OK to continue.`
-        );
-        if (confirmed) {
-          window.location.href = result.interactUrl;
+        if (result.interactUrl) {
+          const confirmed = window.confirm(
+            `Payout approved:\n\n` +
+            `Classification: ${result.classification}\n` +
+            `Funding source: ${fromLabel}\n\n` +
+            `You will be redirected to your wallet to authorise the transfer.\n` +
+            `Click OK to continue.`
+          );
+          if (confirmed) {
+            window.location.href = result.interactUrl;
+          } else {
+            btn.disabled = false; btn.textContent = 'Trigger Payout';
+          }
         } else {
-          btn.disabled = false; btn.textContent = 'Trigger Payout';
+          // Stored grant token — payment completed immediately, no redirect needed
+          alert(`Payout complete — paid from ${fromLabel}.`);
+          await renderAllClaimsView(container, currentUser);
         }
       } catch (err) {
         showRowError(container, id, String(err));
