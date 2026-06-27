@@ -20,6 +20,7 @@ import {
   claims, fireEvents, postUnlocks,
   paymentRequests, transactions, posts,
 } from '../db/schema';
+// memberships is still imported so the wipe (db.delete(memberships)) clears any stale rows
 import { config } from '../config';
 
 async function seedDemo(): Promise<void> {
@@ -81,29 +82,12 @@ async function seedDemo(): Promise<void> {
     updatedAt:             now,
   });
 
-  const nextCharge = new Date(now);
-  nextCharge.setMonth(nextCharge.getMonth() + 1);
-
-  await db.insert(memberships).values({
-    id:                  crypto.randomUUID(),
-    groupId,
-    userId:              aliceId,
-    memberWalletAddress: config.op.walletAddress,
-    monthlyAmount:       '3000', // R30
-    interval:            `R/${now.toISOString().slice(0, 10)}T00:00:00Z/P1M`,
-    status:              'ACTIVE',
-    nextChargeAt:        nextCharge,
-    chargesMade:         0,
-    createdAt:           now,
-    updatedAt:           now,
-  });
-
   console.log('[demo] Done. Accounts:');
   console.log('  admin@demo.com  /  demo  (ADMIN)');
-  console.log('  alice@demo.com  /  demo  (MEMBER, enrolled in Mutual Fund)');
+  console.log('  alice@demo.com  /  demo  (MEMBER, not yet enrolled — use the Relief Fund to demo the Open Payments consent flow)');
   console.log('[demo] Open two browser windows:');
   console.log('  Window 1 (normal):    admin@demo.com  →  All Claims');
-  console.log('  Window 2 (incognito): alice@demo.com  →  Relief Fund');
+  console.log('  Window 2 (incognito): alice@demo.com  →  Relief Fund → Enroll (triggers wallet consent)');
 }
 
 seedDemo()

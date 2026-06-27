@@ -80,10 +80,6 @@ function renderPendingCarousel(openClaims: Claim[]): string {
 const HOUSE_SVG =
   `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5 1.5 11H5v10.5h5.2v-6h3.6v6H19V11h3.5z"/></svg>`;
 
-// A flame + a few embers, layered over a burning house.
-const FIRE_OVERLAY =
-  `<span class="flame"></span><span class="ember"></span><span class="ember"></span><span class="ember"></span>`;
-
 export interface VillageCtx {
   memberCount:  number;  // enrolled member households
   fireCount:    number;  // households with an open (PENDING/VERIFIED) claim
@@ -164,8 +160,7 @@ function renderVillage(group: Group, ctx: VillageCtx): string {
     let cls: string;
     let inner = HOUSE_SVG;
     if (i < iconsFire) {
-      cls    = 'house is-fire';
-      inner += FIRE_OVERLAY;
+      cls = 'house is-fire';
     } else if (i < iconsFire + iconsGold) {
       cls = 'house is-protected';
     } else {
@@ -194,7 +189,7 @@ function renderVillage(group: Group, ctx: VillageCtx): string {
       : `of ${ctx.memberCount} member home${ctx.memberCount === 1 ? '' : 's'} protected by the fund right now`;
 
   const scaleNote  = perIcon > 1 ? `<span class="muted">each 🏠 ≈ ${perIcon} homes</span>` : '';
-  const fireLegend = fireHomes > 0 ? `<span><i class="dot fire"></i>Ablaze (${fireHomes})</span>` : '';
+  const fireLegend = fireHomes > 0 ? `<span><i class="dot fire"></i>Claim pending (${fireHomes})</span>` : '';
 
   // ── Ambient state ────────────────────────────────────────────────────────────
   // Resilience weather: amber when the pool can cover the next payout, smoky red
@@ -305,7 +300,6 @@ function renderReservoir(group: Group): string {
 
   const poolPct  = Math.max(0, Math.min(100, (bal / cap) * 100));
   const floorPct = Math.max(0, Math.min(100, (floor / cap) * 100));
-  const headroom = Math.max(0, bal - floor);
   const engaged  = bal - payout < floor; // backstop covers the shortfall
 
   return `
@@ -318,10 +312,8 @@ function renderReservoir(group: Group): string {
           <div class="tank-floor" style="bottom:${floorPct}%"><span>floor</span></div>
         </div>
         <div class="reservoir-legend">
-          <div class="rl-row"><span class="rl-dot pool"></span><span>Layer 1 · Pool</span><strong>${formatZAR(group.poolBalance, scale)}</strong></div>
-          <div class="rl-row"><span class="rl-dot head"></span><span>Coverable above floor</span><strong>${formatZAR(String(headroom), scale)}</strong></div>
+          <div class="rl-row"><span class="rl-dot pool"></span><span>Pool balance</span><strong>${formatZAR(group.poolBalance, scale)}</strong></div>
           <div class="rl-row"><span class="rl-dot floor"></span><span>Reserve floor</span><strong>${formatZAR(group.reserveFloor, scale)}</strong></div>
-          <div class="rl-row"><span class="rl-dot cap"></span><span>Design capacity</span><strong>${formatZAR(group.designCapacity, scale)}</strong></div>
         </div>
       </div>
       <div class="backstop-band${engaged ? ' engaged' : ''}">
