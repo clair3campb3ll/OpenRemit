@@ -8,7 +8,7 @@ import { usersRouter } from './routes/users';
 import { requestsRouter } from './routes/requests';
 import { newsRouter } from './routes/news';
 import { claimsRouter } from './routes/claims';
-import { membersRouter } from './routes/members';
+import { membershipsRouter } from './routes/memberships';
 import { errorHandler } from './middleware/errorHandler';
 import { seedNews } from './lib/seedNews';
 import { seedGroup } from './lib/seedGroup';
@@ -30,7 +30,7 @@ app.use('/api/news', newsRouter);
 app.use('/api/remit', remitRouter);
 app.use('/api/callback', callbackRouter);
 app.use('/api/claims', claimsRouter);
-app.use('/api/members', membersRouter);
+app.use('/api/memberships', membershipsRouter);
 
 app.use(errorHandler);
 

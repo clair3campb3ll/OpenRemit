@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db';
-import { transactions, paymentRequests, postUnlocks, claims, groups } from '../db/schema';
+import { transactions, paymentRequests, postUnlocks, claims, groups, memberships } from '../db/schema';
 import { getClient, getClientForSource, isFinalizedGrant } from '../lib/openPayments';
+import { activateMembership } from '../lib/debitOrder';
 import { config } from '../config';
 
 export const callbackRouter = Router();
@@ -30,7 +31,33 @@ callbackRouter.get('/', async (req, res) => {
   // On success the auth server sends `interact_ref`. On rejection it sends
   // `result=grant_rejected` (and no interact_ref) — that's the user clicking
   // "Decline" at their wallet's consent page.
-  const { interact_ref, transactionId, result } = req.query as Record<string, string>;
+  const { interact_ref, transactionId, membershipId, prepayMonths, result } = req.query as Record<string, string>;
+
+  // Recurring debit-order enrollment finishes here too. Handle it separately
+  // from one-off payment callbacks: finalize the grant, store the recurring
+  // token, mark the membership ACTIVE, and run the first month's charge.
+  // prepayMonths being set means this is a lump-sum prepay, not enrollment.
+  if (membershipId && !prepayMonths) {
+    if (!interact_ref || result === 'grant_rejected') {
+      await db
+        .update(memberships)
+        .set({ status: 'CANCELLED', lastError: 'Enrollment declined at wallet.', updatedAt: new Date() })
+        .where(eq(memberships.id, membershipId));
+      return res.redirect(`${config.frontendUrl}/?enroll=declined#/claims`);
+    }
+    try {
+      await activateMembership(membershipId, interact_ref);
+      return res.redirect(`${config.frontendUrl}/?enroll=active#/claims`);
+    } catch (err) {
+      const message = (err as any)?.description ?? (err instanceof Error ? err.message : String(err));
+      console.error('[callback] Enrollment failed: %s', message);
+      await db
+        .update(memberships)
+        .set({ status: 'FAILED', lastError: message, updatedAt: new Date() })
+        .where(eq(memberships.id, membershipId));
+      return res.redirect(`${config.frontendUrl}/?enroll=failed#/claims`);
+    }
+  }
 
   if (!transactionId) {
     return res.status(400).send('Missing transactionId in callback query');
@@ -223,11 +250,16 @@ callbackRouter.get('/', async (req, res) => {
       .from(claims)
       .where(and(eq(claims.transactionId, transactionId), eq(claims.status, 'VERIFIED')));
 
+    // Marker so the frontend can play the payout "money-shot" on return.
+    let payoutSuffix = '';
+
     if (linkedClaim) {
       await db
         .update(claims)
         .set({ status: 'PAID', updatedAt: new Date() })
         .where(eq(claims.id, linkedClaim.id));
+
+      payoutSuffix = `&payout=${linkedClaim.payoutSource ?? 'POOL'}&claim=${linkedClaim.id}`;
 
       if (linkedClaim.payoutSource === 'POOL' && linkedClaim.payoutAmount) {
         const [grp] = await db.select().from(groups).where(eq(groups.id, linkedClaim.groupId));
@@ -245,7 +277,43 @@ callbackRouter.get('/', async (req, res) => {
       );
     }
 
-    res.redirect(`${config.frontendUrl}?status=completed&id=${transactionId}${postSuffix}`);
+    // If this completed payment landed in a group's pool wallet, treat it as a
+    // member contribution and credit the pool balance. This is what makes the
+    // "homes the pool can rebuild" visualization tick upward after a top-up.
+    // (Claim payouts send *from* the pool wallet, so they never match here.)
+    const [fundedGroup] = await db
+      .select()
+      .from(groups)
+      .where(eq(groups.poolWalletAddress, tx.receiverWalletAddress));
+
+    if (fundedGroup && tx.receiveAmount) {
+      const credited = String(BigInt(fundedGroup.poolBalance) + BigInt(tx.receiveAmount));
+      await db
+        .update(groups)
+        .set({ poolBalance: credited, updatedAt: new Date() })
+        .where(eq(groups.id, fundedGroup.id));
+      console.log(
+        `[callback] Pool contribution: credited ${tx.receiveAmount} to ${fundedGroup.name} → balance ${credited}`
+      );
+    }
+
+    // Lump-sum prepay: advance the membership schedule by N months.
+    let prepaySuffix = '';
+    if (membershipId && prepayMonths) {
+      const months = parseInt(prepayMonths, 10);
+      const [m] = await db.select().from(memberships).where(eq(memberships.id, membershipId));
+      if (m?.status === 'ACTIVE') {
+        const base = new Date(m.nextChargeAt ?? new Date());
+        base.setMonth(base.getMonth() + months);
+        await db.update(memberships)
+          .set({ chargesMade: m.chargesMade + months, nextChargeAt: base, updatedAt: new Date() })
+          .where(eq(memberships.id, m.id));
+        console.log('[callback] Prepay: membershipId=%s advanced %d months → nextChargeAt=%s', m.id, months, base.toISOString());
+      }
+      prepaySuffix = `&prepay=${months}`;
+    }
+
+    res.redirect(`${config.frontendUrl}?status=completed&id=${transactionId}${postSuffix}${payoutSuffix}${prepaySuffix}`);
   } catch (err) {
     const message = (err as any)?.description ?? (err instanceof Error ? err.message : String(err));
     console.error('[callback] Payment failed: HTTP=%s body=%j', (err as any)?.status ?? 'n/a', message);

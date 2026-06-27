@@ -211,37 +211,6 @@ export interface Claim {
   event:          FireEvent | null;
 }
 
-export interface Member {
-  id:                 string;
-  userId:             string | null;
-  groupId:            string;
-  walletAddress:      string;
-  contributionAmount: string;
-  assetCode:          string;
-  assetScale:         number;
-  status:             'PENDING_GRANT' | 'ACTIVE' | 'PAUSED' | 'CANCELLED';
-  createdAt:          string;
-  updatedAt:          string;
-}
-
-export interface EnrollResponse {
-  memberId:    string;
-  interactUrl: string;
-}
-
-export interface ContributeResponse {
-  memberId:           string;
-  transactionId:      string;
-  contributionAmount: string;
-  assetCode:          string;
-  newPoolBalance:     string;
-  quote: {
-    debitAmount:   { value: string; assetCode: string; assetScale: number };
-    receiveAmount: { value: string; assetCode: string; assetScale: number };
-    expiresAt?:    string;
-  };
-}
-
 export interface PayoutResponse {
   claimId:       string;
   transactionId: string;
@@ -377,10 +346,36 @@ export const api = {
     payout:  (id: string) => post<PayoutResponse>(`/api/claims/${encodeURIComponent(id)}/payout`, {}, true),
   },
 
-  members: {
-    list:       () => get<Member[]>('/api/members', true),
-    enroll:     (body: { groupId: string; walletAddress: string; contributionAmountMajor: string }) =>
-      post<EnrollResponse>('/api/members/enroll', body, true),
-    contribute: (id: string) => post<ContributeResponse>(`/api/members/${encodeURIComponent(id)}/contribute`, {}, true),
+  memberships: {
+    summary:   () => get<MembershipSummary>('/api/memberships/summary', true),
+    enroll:    () => post<{ membershipId: string; interactUrl: string }>('/api/memberships/enroll', {}, true),
+    runDebits: () => post<RunDebitsResult>('/api/memberships/run-debits', {}, true),
+    prepay:    (months: number) => post<{ interactUrl: string }>('/api/memberships/prepay', { months }, true),
   },
 };
+
+export interface MyMembership {
+  id:            string;
+  status:        'PENDING_CONSENT' | 'ACTIVE' | 'CANCELLED' | 'FAILED';
+  monthlyAmount: string;
+  chargesMade:   number;
+  nextChargeAt:  string | null;
+  lastChargeAt:  string | null;
+  lastError:     string | null;
+}
+
+export interface MembershipSummary {
+  memberCount:        number;
+  monthlyInflowMinor: string;
+  premiumMinor:       string;
+  assetScale:         number;
+  mine:               MyMembership | null;
+}
+
+export interface RunDebitsResult {
+  due:         number;
+  charged:     number;
+  failed:      number;
+  results:     Array<{ membershipId: string; ok: boolean; error?: string }>;
+  poolBalance: string;
+}

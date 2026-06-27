@@ -43,6 +43,9 @@ export function renderSignupView(container: HTMLElement): void {
         password:     data.get('password')    as string,
       });
       setToken(result.token);
+      // One-time flag: the first time this new member opens the Relief Fund,
+      // their home drops into the village as a welcome. Cleared on first view.
+      localStorage.setItem('fireline:welcome', '1');
       window.location.hash = '#/claims';
     } catch (err: unknown) {
       const msg          = err instanceof Error ? err.message : String(err);
