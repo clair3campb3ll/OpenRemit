@@ -345,4 +345,36 @@ export const api = {
     reject:  (id: string) => patch<Claim>(`/api/claims/${encodeURIComponent(id)}/reject`, {}),
     payout:  (id: string) => post<PayoutResponse>(`/api/claims/${encodeURIComponent(id)}/payout`, {}, true),
   },
+
+  memberships: {
+    summary:   () => get<MembershipSummary>('/api/memberships/summary', true),
+    enroll:    () => post<{ membershipId: string; interactUrl: string }>('/api/memberships/enroll', {}, true),
+    runDebits: () => post<RunDebitsResult>('/api/memberships/run-debits', {}, true),
+  },
 };
+
+export interface MyMembership {
+  id:            string;
+  status:        'PENDING_CONSENT' | 'ACTIVE' | 'CANCELLED' | 'FAILED';
+  monthlyAmount: string;
+  chargesMade:   number;
+  nextChargeAt:  string | null;
+  lastChargeAt:  string | null;
+  lastError:     string | null;
+}
+
+export interface MembershipSummary {
+  memberCount:        number;
+  monthlyInflowMinor: string;
+  premiumMinor:       string;
+  assetScale:         number;
+  mine:               MyMembership | null;
+}
+
+export interface RunDebitsResult {
+  due:         number;
+  charged:     number;
+  failed:      number;
+  results:     Array<{ membershipId: string; ok: boolean; error?: string }>;
+  poolBalance: string;
+}

@@ -45,7 +45,7 @@ export async function seedGroup(): Promise<void> {
   const now = new Date();
   await db.insert(groups).values({
     id:                    crypto.randomUUID(),
-    name:                  'Khayelitsha Church Mutual',
+    name:                  'Mutual Fund',
     poolWalletAddress:     config.op.walletAddress,
     backstopWalletAddress: config.backstop.walletAddress,
     fixedPayoutAmount:     '80000',  // R800 at scale 2 (ZAR cents)

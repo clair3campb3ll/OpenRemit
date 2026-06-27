@@ -12,6 +12,8 @@ import { renderNewsView }          from './views/newsView';
 import { renderNewsArticleView }   from './views/newsArticleView';
 import type { UnlockOutcome }      from './views/newsArticleView';
 import { renderClaimsView }        from './views/claimsView';
+import { renderReportFireView }    from './views/reportFireView';
+import { renderAllClaimsView }     from './views/allClaimsView';
 
 const view    = document.getElementById('view')!;
 const nav     = document.getElementById('main-nav')!;
@@ -67,10 +69,21 @@ async function route(): Promise<void> {
       renderNewsArticleView(view, returnPost, outcome);
       return;
     }
-    history.replaceState({}, '', window.location.pathname + '#/status');
-    updateNav('');
-    renderStatusView(view, returnId);
-    return;
+    // Claim payout: land back on the Relief Fund and play the money-shot,
+    // rather than the generic status view.
+    const payout = params.get('payout');
+    if (payout && isLoggedIn()) {
+      localStorage.setItem('fireline:payout', payout);
+      const paidClaim = params.get('claim');
+      if (paidClaim) localStorage.setItem('fireline:payoutClaim', paidClaim);
+      history.replaceState({}, '', window.location.pathname + '#/claims');
+      // fall through to the hash router below, which renders the Relief Fund.
+    } else {
+      history.replaceState({}, '', window.location.pathname + '#/status');
+      updateNav('');
+      renderStatusView(view, returnId);
+      return;
+    }
   }
 
   const hash  = window.location.hash || '#/';
@@ -128,6 +141,14 @@ async function route(): Promise<void> {
   }
   if (path === '/claims') {
     await renderClaimsView(view, cachedUser);
+    return;
+  }
+  if (path === '/report') {
+    await renderReportFireView(view);
+    return;
+  }
+  if (path === '/all-claims') {
+    await renderAllClaimsView(view, cachedUser);
     return;
   }
   if (path === '/profile') {

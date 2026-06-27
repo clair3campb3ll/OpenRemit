@@ -249,3 +249,49 @@ export const claims = sqliteTable('claims', {
 
 export type Claim    = typeof claims.$inferSelect;
 export type NewClaim = typeof claims.$inferInsert;
+
+// A member's recurring R30/month debit order into the pool, backed by a real
+// Open Payments recurring outgoing-payment grant. The member consents ONCE
+// (interactive) to a grant whose limit carries an ISO-8601 `interval` (P1M) and
+// a per-interval `debitAmount`. The finalized access token + its management URL
+// are stored so the backend can charge each month WITHOUT re-consent (rotating
+// the token before each charge).
+// Status: PENDING_CONSENT → ACTIVE → CANCELLED | FAILED
+export const memberships = sqliteTable('memberships', {
+  id:              text('id').primaryKey(),
+  groupId:         text('group_id').notNull().references(() => groups.id),
+  userId:          text('user_id').notNull().references(() => users.id),
+
+  // The wallet the monthly debit is pulled from (member's own wallet)
+  memberWalletAddress: text('member_wallet_address').notNull(),
+
+  // Per-interval debit (smallest asset unit, e.g. "3000" = R30 at scale 2)
+  monthlyAmount:   text('monthly_amount').notNull(),
+  // ISO-8601 repeating interval sent as the grant limit, e.g. R/2026-07-01T00:00:00Z/P1M
+  interval:        text('interval').notNull(),
+
+  // PENDING_CONSENT | ACTIVE | CANCELLED | FAILED
+  status:          text('status').notNull(),
+
+  // GNAP continuation details for the enrollment consent (until finalized)
+  grantContinueUri:   text('grant_continue_uri'),
+  grantContinueToken: text('grant_continue_token'),
+  grantInteractNonce: text('grant_interact_nonce'),
+
+  // The finalized recurring grant's access token + management URL. Rotated and
+  // reused to create each monthly outgoing payment without further consent.
+  accessToken:        text('access_token'),
+  accessTokenManageUrl: text('access_token_manage_url'),
+
+  // Scheduling
+  nextChargeAt:    integer('next_charge_at', { mode: 'timestamp' }),
+  lastChargeAt:    integer('last_charge_at', { mode: 'timestamp' }),
+  chargesMade:     integer('charges_made').notNull().default(0),
+  lastError:       text('last_error'),
+
+  createdAt:       integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt:       integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+export type Membership    = typeof memberships.$inferSelect;
+export type NewMembership = typeof memberships.$inferInsert;
